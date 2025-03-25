@@ -1,0 +1,14 @@
+{
+  "type": "record",
+  "name": "TableMetadata",
+  "fields": [
+    {
+      "type": "string",
+      "name": "name"
+    },
+    {
+      "type": "long",
+      "name": "max_row_id"
+    }
+  ]
+}

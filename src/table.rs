@@ -6,13 +6,15 @@ const SCHEMA: &str = include_str!("assets/schemas/table.json");
 pub struct Table {
     pub name: String,
     pub fields: Vec<Field>,
+    pub primary_key: Vec<String>,
 }
 
 impl Table {
-    pub fn new(name: String) -> Self {
+    pub fn new(name: String, primary_key: Vec<String>) -> Self {
         Self {
             name,
             fields: vec![],
+            primary_key,
         }
     }
 
@@ -38,8 +40,8 @@ impl Table {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct Field {
-    name: String,
-    r#type: FieldType,
+    pub name: String,
+    pub r#type: FieldType,
 }
 
 impl Field {
@@ -66,8 +68,12 @@ mod tests {
     fn test_schema() {
         let schema = apache_avro::schema::Schema::parse_str(SCHEMA).expect("Invalid schema");
 
-        let mut table = Table::new("Person".to_string());
-        table.add_field(Field::new("name".to_string(), FieldType::String));
+        let mut table = Table::new(
+            "Person".to_string(),
+            vec!["firstname".to_string(), "lastname".to_string()],
+        );
+        table.add_field(Field::new("lastname".to_string(), FieldType::String));
+        table.add_field(Field::new("firstname".to_string(), FieldType::String));
         table.add_field(Field::new("age".to_string(), FieldType::Int));
         table.add_field(Field::new("height".to_string(), FieldType::Float));
         table.add_field(Field::new("is_married".to_string(), FieldType::Bool));

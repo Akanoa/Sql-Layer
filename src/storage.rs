@@ -33,7 +33,7 @@ const MAX_SCAN_SIZE: usize = 20;
 
 #[derive(Clone)]
 pub struct Storage {
-    database: Arc<Database>,
+    pub database: Arc<Database>,
 }
 
 impl Storage {

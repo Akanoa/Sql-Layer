@@ -30,6 +30,11 @@
           }
         ]
       }
+    },
+    {
+      "type": "array",
+      "name": "primary_key",
+      "items": "string"
     }
   ]
 }

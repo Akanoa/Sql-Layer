@@ -5,16 +5,12 @@ const SCHEMA: &str = include_str!("assets/schemas/row.json");
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Row {
-    pub row_id: u64,
     pub columns: Vec<Option<Column>>,
 }
 
 impl Row {
-    pub fn new(row_id: u64) -> Self {
-        Self {
-            row_id,
-            columns: vec![],
-        }
+    pub fn new() -> Self {
+        Self { columns: vec![] }
     }
 
     pub fn add_column(&mut self, column: Column) {
@@ -79,6 +75,23 @@ impl Column {
     }
 }
 
+impl Row {
+    pub fn to_bytes(&self) -> crate::errors::Result<Vec<u8>> {
+        let schema = apache_avro::schema::Schema::parse_str(SCHEMA)?;
+        let value = apache_avro::to_value(self)?;
+        let bytes = apache_avro::to_avro_datum(&schema, value)?;
+        Ok(bytes)
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> crate::errors::Result<Self> {
+        let schema = apache_avro::schema::Schema::parse_str(SCHEMA)?;
+        let mut data = bytes;
+        let value = apache_avro::from_avro_datum(&schema, &mut data, None)?;
+        let row = apache_avro::from_value::<Row>(&value)?;
+        Ok(row)
+    }
+}
+
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct ColumnString(pub String);
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -98,7 +111,7 @@ mod tests {
     fn test_row() {
         let schema = apache_avro::schema::Schema::parse_str(SCHEMA).expect("Invalid schema");
 
-        let mut row = Row::new(1);
+        let mut row = Row::new();
         row.add_column(Column::new_string("John".to_string()));
         row.add_column(Column::new_int(20));
         row.add_column(Column::new_float(20.5));

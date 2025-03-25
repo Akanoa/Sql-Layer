@@ -1,0 +1,35 @@
+{
+  "type": "record",
+  "name": "Table",
+  "fields": [
+    {
+      "type": "string",
+      "name": "name"
+    },
+    {
+      "type": "array",
+      "name": "fields",
+      "items": {
+        "type": "record",
+        "name": "Field",
+        "fields": [
+          {
+            "type": "string",
+            "name": "name"
+          },
+          {
+            "type": "enum",
+            "name": "type",
+            "symbols": [
+              "String",
+              "Int",
+              "Float",
+              "Bool",
+              "Bytes"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

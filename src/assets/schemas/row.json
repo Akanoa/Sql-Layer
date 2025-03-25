@@ -1,0 +1,56 @@
+{
+  "type": "record",
+  "name": "Row",
+  "fields": [
+    {
+      "type": "array",
+      "name": "columns",
+      "items": {
+        "type": [
+          "null",
+          {
+            "type": "record",
+            "name": "Column",
+            "fields": [
+              {
+                "type": [
+                  "null",
+                  "string"
+                ],
+                "name": "column_string"
+              },
+              {
+                "type": [
+                  "null",
+                  "long"
+                ],
+                "name": "column_int"
+              },
+              {
+                "type": [
+                  "null",
+                  "double"
+                ],
+                "name": "column_float"
+              },
+              {
+                "type": [
+                  "null",
+                  "boolean"
+                ],
+                "name": "column_bool"
+              },
+              {
+                "type": [
+                  "null",
+                  "bytes"
+                ],
+                "name": "column_bytes"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -5,12 +5,16 @@ const SCHEMA: &str = include_str!("assets/schemas/row.json");
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Row {
+    pub row_id: u64,
     pub columns: Vec<Option<Column>>,
 }
 
 impl Row {
-    pub fn new() -> Self {
-        Self { columns: vec![] }
+    pub fn new(row_id: u64) -> Self {
+        Self {
+            row_id,
+            columns: vec![],
+        }
     }
 
     pub fn add_column(&mut self, column: Column) {
@@ -94,7 +98,7 @@ mod tests {
     fn test_row() {
         let schema = apache_avro::schema::Schema::parse_str(SCHEMA).expect("Invalid schema");
 
-        let mut row = Row::new();
+        let mut row = Row::new(1);
         row.add_column(Column::new_string("John".to_string()));
         row.add_column(Column::new_int(20));
         row.add_column(Column::new_float(20.5));

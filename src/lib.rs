@@ -1,3 +1,4 @@
+mod database;
 mod errors;
 mod record;
 pub mod row;

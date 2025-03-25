@@ -6,4 +6,6 @@ pub enum SqlLayerError {
     Fdb(#[from] foundationdb::FdbBindingError),
     #[error("FoundationDB error : {0}")]
     FdbError(#[from] foundationdb::FdbError),
+    #[error("Apache Avro error : {0}")]
+    Avro(#[from] apache_avro::Error),
 }

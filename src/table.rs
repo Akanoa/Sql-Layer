@@ -3,9 +3,9 @@ use serde::{Deserialize, Serialize};
 const SCHEMA: &str = include_str!("assets/schemas/table.json");
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
-struct Table {
-    name: String,
-    fields: Vec<Field>,
+pub struct Table {
+    pub name: String,
+    pub fields: Vec<Field>,
 }
 
 impl Table {
@@ -19,10 +19,25 @@ impl Table {
     pub fn add_field(&mut self, field: Field) {
         self.fields.push(field);
     }
+
+    pub fn to_bytes(&self) -> crate::errors::Result<Vec<u8>> {
+        let schema = apache_avro::schema::Schema::parse_str(SCHEMA)?;
+        let value = apache_avro::to_value(self)?;
+        let bytes = apache_avro::to_avro_datum(&schema, value)?;
+        Ok(bytes)
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> crate::errors::Result<Self> {
+        let schema = apache_avro::schema::Schema::parse_str(SCHEMA)?;
+        let mut data = bytes;
+        let value = apache_avro::from_avro_datum(&schema, &mut data, None)?;
+        let table = apache_avro::from_value::<Self>(&value)?;
+        Ok(table)
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
-struct Field {
+pub struct Field {
     name: String,
     r#type: FieldType,
 }
@@ -34,7 +49,7 @@ impl Field {
 }
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialEq)]
-enum FieldType {
+pub enum FieldType {
     String,
     Int,
     Float,

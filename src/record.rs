@@ -2,6 +2,7 @@ use crate::row::Row;
 
 #[derive(Debug, PartialEq)]
 struct Record {
+    row_id: u64,
     columns: Vec<Column>,
 }
 
@@ -25,7 +26,10 @@ impl From<Row> for Record {
                 None => Column::Null,
             })
             .collect();
-        Record { columns }
+        Record {
+            row_id: value.row_id,
+            columns,
+        }
     }
 }
 
@@ -61,7 +65,7 @@ mod tests {
 
     #[test]
     fn test_convert_row_to_record() {
-        let mut row = Row::new();
+        let mut row = Row::new(1);
         row.add_column(crate::row::Column::new_string("John".to_string()));
         row.add_column(crate::row::Column::new_int(20));
         row.add_column(crate::row::Column::new_float(20.5));
@@ -73,6 +77,7 @@ mod tests {
         assert_eq!(
             record,
             Record {
+                row_id: 1,
                 columns: vec![
                     Column::String("John".to_string()),
                     Column::Int(20),

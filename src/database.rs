@@ -1,8 +1,9 @@
 use crate::errors::SqlLayerError;
 use crate::record::Column;
-use crate::record::{PrimaryKey, Record};
+use crate::record::{Columns, Record};
 use crate::row::Row;
 use crate::storage::Storage;
+use crate::table;
 use crate::table::{FieldType, Table};
 use crate::table_metadata::TableMetadata;
 use foundationdb::{FdbBindingError, RetryableTransaction};
@@ -16,6 +17,7 @@ enum DataPrefix {
     TableMeta = 2,
     Row = 3,
     PrimaryKey = 4,
+    Index = 5,
 }
 
 impl TuplePack for DataPrefix {
@@ -67,6 +69,38 @@ impl Database {
         Ok(())
     }
 
+    /// Adds an index to a table in the database.
+    ///
+    /// This method retrieves the table corresponding to the given name from the database,
+    /// adds the specified index to the table's metadata, and updates the table's information
+    /// in the database.
+    ///
+    /// # Arguments
+    ///
+    /// * `table_name` - The name of the table to which the index should be added.
+    /// * `index` - A reference to the `Index` that should be added to the table's metadata.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The table with the specified name does not exist.
+    /// - The table update operation fails due to a database error.
+    async fn add_index(&self, table_name: &str, index: &table::Index) -> crate::errors::Result<()> {
+        self.storage
+            .database
+            .run(|trx, _| async move {
+                let mut table = self
+                    .get_table_internal(&trx, table_name)
+                    .await?
+                    .ok_or(SqlLayerError::TableNotFound(table_name.to_string()))?;
+                table.add_index(index);
+                self.update_table_internal(&trx, table).await?;
+                Ok(())
+            })
+            .await?;
+        Ok(())
+    }
+
     ///
     /// Retrieves a table from the database by its name.
     ///
@@ -98,6 +132,20 @@ impl Database {
             Some(bytes) => Ok(Some(Table::from_bytes(&bytes)?)),
             None => Ok(None),
         }
+    }
+
+    async fn update_table_internal(
+        &self,
+        trx: &RetryableTransaction,
+        table: Table,
+    ) -> crate::errors::Result<()> {
+        let key = self
+            .root_subspace
+            .subspace(&DataPrefix::Table)
+            .pack(&table.name);
+        let bytes = table.to_bytes()?;
+        trx.set(&key, &bytes);
+        Ok(())
     }
 
     async fn get_table(&self, table_name: &str) -> crate::errors::Result<Option<Table>> {
@@ -174,19 +222,21 @@ impl Database {
 
                     // build the primary key tuple
                     let mut pk = vec![];
-                    for (i, column_name) in table.primary_key.iter().enumerate() {
-                        match record.columns.get(i) {
-                            None => {
-                                return Err(SqlLayerError::MissingColumn(column_name.to_string()))?;
-                            }
-                            Some(column) => pk.push(column),
-                        }
+                    for field in table.primary_key.iter() {
+                        let i = table
+                            .get_field_pos(field)
+                            .ok_or(SqlLayerError::MissingColumn(field.to_string()))?;
+                        let columns = record
+                            .columns
+                            .get(i)
+                            .ok_or(SqlLayerError::MissingColumn(field.to_string()))?;
+                        pk.push(columns);
                     }
                     let mut meta = self.get_table_meta(&trx, table_name).await?;
                     let row_id = meta.get_current_row_id() as i64;
 
                     // store the primary key
-                    let pk = PrimaryKey::new(&pk);
+                    let pk = Columns::new(&pk);
                     // dbg!("Inserting record with primary key {:?}", &pk);
                     let subspace_pk = self
                         .root_subspace
@@ -195,6 +245,33 @@ impl Database {
                         .pack(&pk);
 
                     trx.set(&subspace_pk, pack(&row_id).as_ref());
+
+                    // store index
+                    for index in &table.indexes {
+                        let mut columns = vec![];
+                        for field in index.fields() {
+                            let i = table
+                                .get_field_pos(field)
+                                .ok_or(SqlLayerError::MissingColumn(field.to_string()))?;
+                            let column = record
+                                .columns
+                                .get(i)
+                                .ok_or(SqlLayerError::MissingColumn(field.to_string()))?;
+                            columns.push(column);
+                        }
+                        let columns = Columns::new(&columns);
+                        let subspace_index = self
+                            .root_subspace
+                            .subspace(&DataPrefix::Index)
+                            .subspace(&table_name)
+                            .pack(&columns);
+                        println!(
+                            "Inserting record with index {} {:?}",
+                            index.name(),
+                            &columns
+                        );
+                        trx.set(&subspace_index, pack(&row_id).as_ref());
+                    }
 
                     // store the record
                     let row: Row = record.into();
@@ -224,52 +301,70 @@ impl Database {
         Ok(())
     }
 
+    ///
+    /// Fetches a record from the database based on the given primary key.
+    ///
+    /// # Parameters
+    ///
+    /// - `table_name`: The name of the table from which to fetch the record.
+    /// - `pk`: A reference to the primary key of the record to retrieve.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(Some(record))` containing the record if it exists, `Ok(None)` if the record
+    /// does not exist, or an error if the operation fails.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The table does not exist.
+    /// - The provided primary key does not match the schema.
+    /// - There is an issue with the database read operation.
+    // todo: use [get_mapped_ranges] instead
     async fn get_record_by_pk(
         &self,
         table_name: &str,
-        pk: &PrimaryKey<'_>,
+        pk: &Columns<'_>,
     ) -> crate::errors::Result<Option<Record>> {
         let kv = self
             .storage
             .database
             .run(|trx, _| async move {
+                // build primary key subspace out of the primary key columns
                 let subspace_pk = self
                     .root_subspace
                     .subspace(&DataPrefix::PrimaryKey)
                     .subspace(&table_name)
                     .pack(&pk);
-                let kv = trx.get(&subspace_pk, false).await?;
-                match kv {
-                    None => {
-                        // dbg!("No record found for primary key {:?}", pk);
 
-                        Ok(None)
-                    }
-                    Some(kv) => {
-                        let row_id = unpack::<i64>(&kv).map_err(FdbBindingError::PackError)?;
-                        // println!("Row id: {}", row_id);
-                        let key = self
-                            .root_subspace
-                            .subspace(&DataPrefix::Row)
-                            .subspace(&table_name)
-                            .pack(&row_id);
-                        Ok(trx.get(&key, false).await?)
-                    }
-                }
+                // get the row_id
+                let kv = trx.get(&subspace_pk, false).await?;
+
+                let Some(kv) = kv else {
+                    return Ok(None);
+                };
+
+                let row_id = unpack::<i64>(&kv).map_err(FdbBindingError::PackError)?;
+
+                // get the row
+                let key = self
+                    .root_subspace
+                    .subspace(&DataPrefix::Row)
+                    .subspace(&table_name)
+                    .pack(&row_id);
+                let row = trx.get(&key, false).await?;
+
+                Ok(row)
             })
             .await?;
-        match kv {
-            None => {
-                dbg!("No record found for primary key");
 
-                Ok(None)
-            }
-            Some(kv) => {
-                let row = Row::from_bytes(&kv)?;
-                let record = Record::from(row);
-                Ok(Some(record))
-            }
-        }
+        let Some(kv) = kv else {
+            return Ok(None);
+        };
+
+        let row = Row::from_bytes(&kv)?;
+        let record = Record::from(row);
+        Ok(Some(record))
     }
 }
 
@@ -292,8 +387,10 @@ fn check_field_against_column(field: &FieldType, column: &Column) -> crate::erro
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::index::Index;
     use crate::table;
     use table::{Field, FieldType};
+
     #[tokio::test]
     async fn test_database() {
         let _guard = fdb_testcontainer::get_db_once().await;
@@ -347,7 +444,7 @@ mod tests {
         let found_record = database
             .get_record_by_pk(
                 "Person",
-                &PrimaryKey(&vec![&Column::String("John".to_string())]),
+                &Columns(&vec![&Column::String("John".to_string())]),
             )
             .await
             .expect("Unable to get record");
@@ -402,11 +499,49 @@ mod tests {
             let found = database
                 .get_record_by_pk(
                     "Person",
-                    &PrimaryKey(&vec![&Column::String(format!("John {}", i))]),
+                    &Columns(&vec![&Column::String(format!("John {}", i))]),
                 )
                 .await
                 .expect("Unable to get record");
             assert_eq!(found, Some(expected));
         }
+    }
+
+    #[tokio::test]
+    async fn test_retrieve_row_by_index() {
+        let _guard = fdb_testcontainer::get_db_once().await;
+        let storage = Storage::new(_guard.clone());
+        let database = Database::new(Subspace::all(), storage);
+        let mut table = Table::new("Person".to_string(), vec!["name".to_string()]);
+        table.add_field(Field::new("name".to_string(), FieldType::String));
+        table.add_field(Field::new("age".to_string(), FieldType::Int));
+        table.add_field(Field::new("height".to_string(), FieldType::Float));
+        table.add_field(Field::new("is_married".to_string(), FieldType::Bool));
+        table.add_field(Field::new("photo".to_string(), FieldType::Bytes));
+        database
+            .create_table(&table)
+            .await
+            .expect("Unable to create table");
+
+        let index = &Index::new("idx_age", vec!["age"]);
+        database
+            .add_index("Person", index)
+            .await
+            .expect("Unable to add index");
+
+        let record = Record {
+            columns: vec![
+                Column::String("John".to_string()),
+                Column::Int(20),
+                Column::Float(20.5),
+                Column::Bool(true),
+                Column::Bytes(b"arbitrary data".to_vec()),
+            ],
+        };
+
+        database
+            .insert("Person", &record)
+            .await
+            .expect("Unable to insert record");
     }
 }

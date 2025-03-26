@@ -14,6 +14,12 @@ pub enum SqlLayerError {
     MissingColumn(String),
     #[error("Mismatched column type in primary key: {0} vs {1}")]
     MismatchedColumnType(String, String),
+    #[error("Table not found: {0}")]
+    TableNotFound(String),
+    #[error("Table already exists: {0}")]
+    TableAlreadyExists(String),
+    #[error("Index not found: {0}")]
+    IndexNotFound(String),
 }
 
 impl From<SqlLayerError> for FdbBindingError {

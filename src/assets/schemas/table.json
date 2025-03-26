@@ -35,6 +35,25 @@
       "type": "array",
       "name": "primary_key",
       "items": "string"
+    },
+    {
+      "type": "array",
+      "name": "indexes",
+      "items": {
+        "type": "record",
+        "name": "Index",
+        "fields": [
+          {
+            "type": "string",
+            "name": "name"
+          },
+          {
+            "type": "array",
+            "name": "fields",
+            "items": "string"
+          }
+        ]
+      }
     }
   ]
 }

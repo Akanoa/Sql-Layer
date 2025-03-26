@@ -1,5 +1,6 @@
 mod database;
 mod errors;
+mod index;
 mod record;
 pub mod row;
 mod storage;

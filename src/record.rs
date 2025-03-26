@@ -57,9 +57,9 @@ impl From<crate::row::Column> for Column {
 }
 
 #[derive(Debug)]
-pub struct PrimaryKey<'a>(pub &'a Vec<&'a Column>);
+pub struct Columns<'a>(pub &'a Vec<&'a Column>);
 
-impl<'a> PrimaryKey<'a> {
+impl<'a> Columns<'a> {
     pub fn new(columns: &'a Vec<&'a Column>) -> Self {
         Self(columns)
     }
@@ -82,7 +82,7 @@ impl TuplePack for Column {
     }
 }
 
-impl TuplePack for PrimaryKey<'_> {
+impl TuplePack for Columns<'_> {
     fn pack<W: Write>(
         &self,
         w: &mut W,
